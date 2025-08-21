@@ -1,1 +1,1 @@
-chmod +x credential_workflow.py
+chmod +x cred.py
