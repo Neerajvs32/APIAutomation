@@ -1,0 +1,30 @@
+name: Credential Workflow Automation
+
+on:
+  schedule:
+    # Runs every day at 01:30 UTC (07:00 AM IST)
+    - cron: "45 22 * * *"
+  workflow_dispatch:  # Allows manual trigger as well
+
+jobs:
+  run-credential-workflow:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run Credential Workflow Script
+        env:
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: |
+          python cred.py
