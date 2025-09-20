@@ -726,7 +726,7 @@ def main():
     config = CredentialConfig(
         template_id="26613",
         recipient_name="karan",
-        recipient_email="jadithya2004@gmail.com"
+        recipient_email="neerajsalehittal3235@gmail.com"
     )
 
     template_config = TemplateConfig(
