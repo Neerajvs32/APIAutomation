@@ -1,2 +1,0 @@
-2025-09-19 13:09:40 |     INFO | Making POST request to https://my.certifyme.online/api/v2/credential
-2025-09-19 13:09:40 |    ERROR | Response: 401 - Failed: Invalid or expired token. Please authenticate again.

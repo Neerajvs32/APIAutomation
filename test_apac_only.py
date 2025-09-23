@@ -10,24 +10,16 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Multi-server configuration with respective tokens
+# APAC server configuration
 SERVERS = {
-    "main": {
-        "url": "https://my.certifyme.online",
-        "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo2OTE1LCJpYXQiOjE3NTgyNzI3ODh9.ayh5q2RKoibwMjALS0nf4f0eNgjLINWmWryMpKLZOZI"
-    },
-    "us": {
-        "url": "https://us1.certifyme.org",
-        "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoxNywiaWF0IjoxNzU4MzYyNjcwfQ.yNX03MY63wH0WYYFb4wh_4p0bMRIBUzEfktXf1QhpnU"
-    },
     "apac": {
         "url": "https://apac.platform.certifyme.dev",
-        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo2Mjg4LCJpYXQiOjE3NTg2MDc0Mjh9.TJw1nZ_o6JUgmqAHWP71pD77yxRkScdf171vg5xrw-Y"
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo2MjgzLCJpYXQiOjE3NTgzNjA2NjJ9.TJw1nZ_o6JUgmqAHWP71pD77yxRkScdf171vg5xrw-Y"
     }
 }
 
-# Default configuration
-DEFAULT_SERVER = "main"
+# Default configuration - APAC only
+DEFAULT_SERVER = "apac"
 
 
 @dataclass
@@ -68,7 +60,7 @@ class TemplateConfig:
 
 class EmailManager:
     """Handles email sending for workflow status notifications."""
-    
+
     def __init__(self, config: EmailConfig):
         self.config = config
 
@@ -97,7 +89,7 @@ class CredentialManager:
 
     TIMEOUT_SECONDS = 30
     APAC_TIMEOUT_SECONDS = 120  # Increased timeout for APAC server
-    US_TIMEOUT_SECONDS = 45  # Longer timeout for US server
+    US_TIMEOUT_SECONDS = 45    # Longer timeout for US server
     CREDENTIAL_TIMEOUT_SECONDS = 90  # Extra long timeout for credential creation
 
     def __init__(self, email_manager: EmailManager, demo_mode: bool = False, server_key: str = DEFAULT_SERVER):
@@ -321,12 +313,6 @@ class CredentialManager:
                 print(f"Using mock ID: {mock_id}")
                 self._set_credential_id(mock_id)
                 return True, mock_id
-        elif "maximum number of credentials" in str(response.error_message).lower():
-            # Treat quota exceeded as success since API is working but limited
-            print("Credential quota exceeded - treating as API success")
-            mock_id = f"quota_exceeded_{int(__import__('time').time())}"
-            self._set_credential_id(mock_id)
-            return True, mock_id
 
         return False, None
 
@@ -349,9 +335,9 @@ class CredentialManager:
             return False
 
         url = f"{self.BASE_URL}/{credential_id}"
-        # Use payload if provided, otherwise send basic update payload
-        if payload is None:
-            payload = {"name": "Updated Name"}
+        # For APAC server, send no payload (matching user's example)
+        if self.server_key == "apac":
+            payload = None
         response = self._make_request('PUT', url, self.headers_create, payload)
         print(f"Edit credential response: success={response.success}, status={response.status_code}")
         print(f"Response data: {response.data}")
@@ -437,21 +423,26 @@ class CredentialManager:
         return response.success
 
     # Template Advanced API methods
+    def get_all_templates(self, institution_id: Optional[str] = None) -> bool:
+        if institution_id is None:
+            institution_id = "test_institution"  # Default for testing
+        url = f"{self.server_config['url']}/api/advanced/v2/template/all/{institution_id}"
+        response = self._make_request('GET', url, self.headers_operation)
+        return response.success
+
+    def copy_template(self, template_id: str, payload: Dict) -> bool:
+        url = f"{self.server_config['url']}/api/advanced/v2/template/copy/{template_id}"
+        response = self._make_request('POST', url, self.headers_create, payload)
+        return response.success
+
     def create_template(self, config: TemplateConfig, folder_id: Optional[str] = None) -> Tuple[bool, Optional[str]]:
         url = f"{self.server_config['url']}/api/advanced/v2/template"
-        # Server-specific payload handling
-        if self.server_key == "apac":
-            # APAC server uses simple payload
-            payload = {"event": config.name}
-        else:
-            # Standard payload for MAIN and US servers
-            payload = {
-                "template_ID": config.template_id,  # Use the template ID from config
-                "name": config.name,  # Template name
-                "event": config.name   # Event name (same as name)
-            }
-        # Add folder_id if provided to associate template with folder
-        if folder_id:
+        # APAC server uses simple payload
+        payload = {"event": config.name}
+        print(f"APAC server: Using simple template creation payload with event: {config.name}")
+
+        # Add folder_id if provided to associate template with folder (not used for APAC)
+        if folder_id and self.server_key != "apac":
             payload["folder_id"] = folder_id
             print(f"Creating template in folder: {folder_id}")
 
@@ -499,7 +490,8 @@ class CredentialManager:
             print("   No template ID available for edit operation")
             return False
         url = f"{self.server_config['url']}/api/advanced/v2/template/edit/{template_id}"
-        payload = {"name": name, "description": description}
+        # For APAC server, send no payload (matching user's example)
+        payload = None if self.server_key == "apac" else {"name": name, "description": description}
         response = self._make_request('PUT', url, self.headers_create, payload)
         return response.success
 
@@ -539,6 +531,8 @@ class CredentialManager:
             "credential_delete": False,
             "template_create": False,
             "template_get": False,
+            "template_get_all": False,
+            "template_copy": False,
             "template_edit": False,
             "template_get_credentials": False,
             "template_delete": False,
@@ -567,14 +561,46 @@ class CredentialManager:
             # Phase 2: Template Operations
             print("\n2. Template Operations:")
 
-            # Create template (associated with the folder)
+            # Try to create template with provided config
             print("   Creating template...")
             success, template_id = self.create_template(template_config, folder_id)
             results["template_create"] = success
             if not success:
-                print("   ❌ Template creation failed")
+                print(f"   ❌ Template creation failed with provided ID {template_config.template_id}")
+                print("   🔄 Creating new template since existing one failed...")
+
+                # Create new template with unique ID
+                new_template_config = TemplateConfig(
+                    template_id=f"temp_{int(__import__('time').time())}",
+                    name=f"Auto Template {self.server_key.upper()}",
+                    description=f"Auto-generated template for {self.server_key.upper()} server",
+                    institution_id="test_institution_id"
+                )
+
+                success, template_id = self.create_template(new_template_config, folder_id)
+                if success:
+                    print(f"   ✅ New template created: {template_id}")
+                    # Create new config with updated template ID for credential creation
+                    # (dataclass is immutable, so we need to create a new instance)
+                    config = CredentialConfig(
+                        template_id=template_id,
+                        recipient_name=config.recipient_name,
+                        recipient_email=config.recipient_email
+                    )
+                else:
+                    print("   ❌ Failed to create new template")
             else:
-                print(f"   ✅ Template created: {template_id} (in folder: {folder_id})")
+                if self.server_key == "apac":
+                    print(f"   ✅ Template created: {template_id}")
+                else:
+                    print(f"   ✅ Template created: {template_id} (in folder: {folder_id})")
+                # Update config with actual template ID for credential creation
+                # (dataclass is immutable, so we need to create a new instance)
+                config = CredentialConfig(
+                    template_id=template_id,
+                    recipient_name=config.recipient_name,
+                    recipient_email=config.recipient_email
+                )
 
             if template_id:
                 # Get template
@@ -589,6 +615,18 @@ class CredentialManager:
                 results["template_edit"] = success
                 print(f"   {'✅' if success else '❌'} Edit template")
 
+                # Get all templates (need institution_id - placeholder)
+                print("   Getting all templates...")
+                success = self.get_all_templates("test_institution_id")
+                results["template_get_all"] = success
+                print(f"   {'✅' if success else '❌'} Get all templates")
+
+                # Copy template (if we have a template)
+                print("   Copying template...")
+                success = self.copy_template(template_id, {"name": "Copied APAC Template"})
+                results["template_copy"] = success
+                print(f"   {'✅' if success else '❌'} Copy template")
+
                 # Get credentials by template
                 print("   Getting credentials by template...")
                 success = self.get_credentials_by_template()
@@ -598,27 +636,17 @@ class CredentialManager:
             # Phase 3: Credential Operations
             print("\n3. Credential Operations:")
 
-            # Create credential (associated with the folder and template)
-            print("   Creating credential...")
-            success, credential_id = self.create_credential(config, folder_id)
-            results["credential_create"] = success
-            if not success:
-                print("   ❌ Credential creation failed")
-            else:
-                print(f"   ✅ Credential created: {credential_id} (in folder: {folder_id})")
-
-            quota_limited = False
-            if credential_id:
-                # Check if credential creation was limited by quota
-                quota_limited = credential_id.startswith("quota_exceeded_")
-
-                if quota_limited:
-                    print("   ⚠️ Skipping credential operations due to quota limits (API working correctly)")
-                    results["credential_retrieve"] = True  # API limit, not failure
-                    results["credential_edit"] = True     # API limit, not failure
-                    print("   ✅ Retrieve credential (quota limited)")
-                    print("   ✅ Edit credential (quota limited)")
+            if template_id:
+                # Create credential (associated with the folder and template)
+                print("   Creating credential...")
+                success, credential_id = self.create_credential(config, folder_id)
+                results["credential_create"] = success
+                if not success:
+                    print("   ❌ Credential creation failed")
                 else:
+                    print(f"   ✅ Credential created: {credential_id} (in folder: {folder_id})")
+
+                if credential_id:
                     # Retrieve credential
                     print("   Retrieving credential...")
                     success = self.retrieve_credential()
@@ -636,6 +664,8 @@ class CredentialManager:
                         success = self.edit_credential(payload=edit_payload)
                     results["credential_edit"] = success
                     print(f"   {'✅' if success else '❌'} Edit credential")
+            else:
+                print("   ❌ Skipping credential operations - no valid template available")
 
             # Phase 4: Folder Operations
             print("\n4. Folder Operations:")
@@ -650,12 +680,9 @@ class CredentialManager:
             # Phase 5: Cleanup
             print("\n5. Cleanup Operations:")
 
-            # Delete credential (use stored ID if available)
-            print("   Deleting credential...")
-            if quota_limited:
-                results["credential_delete"] = True  # No credential to delete
-                print("   ✅ Delete credential (no credential created)")
-            else:
+            if credential_id:
+                # Delete credential (use stored ID if available)
+                print("   Deleting credential...")
                 success = self.delete_credential()
                 results["credential_delete"] = success
                 print(f"   {'✅' if success else '❌'} Delete credential")
@@ -724,6 +751,8 @@ Test Results:
 Template Operations:
 • Create Template: {'✅ PASS' if results['template_create'] else '❌ FAIL'}
 • Get Template: {'✅ PASS' if results['template_get'] else '❌ FAIL'}
+• Get All Templates: {'✅ PASS' if results['template_get_all'] else '❌ FAIL'}
+• Copy Template: {'✅ PASS' if results['template_copy'] else '❌ FAIL'}
 • Edit Template: {'✅ PASS' if results['template_edit'] else '❌ FAIL'}
 • Get Credentials by Template: {'✅ PASS' if results['template_get_credentials'] else '❌ FAIL'}
 • Delete Template: {'⏸️ PRESERVED' if results['template_delete'] else '❌ FAIL'} (Template kept for reuse)
@@ -751,7 +780,7 @@ Overall Status: {'✅ ALL TESTS PASSED (Template Preserved)' if success_rate == 
 
 
 def main():
-    print("CertifyMe Multi-Server API Automation System")
+    print("CertifyMe APAC Server API Automation Test")
     print("=" * 60)
 
     # Email configuration (replace with real values)
@@ -760,99 +789,47 @@ def main():
         smtp_port=587,
         sender_email="neerajsalehittal3235@gmail.com",
         sender_password="qvkm odse mvjt rlei",  # Use App Password if Gmail
-        recipient_email="jadithya2004@gmail.com"
+        recipient_email="neerajsalehittal3235@gmail.com"
     )
     email_manager = EmailManager(email_config)
 
-    config = CredentialConfig(
-        template_id="26613",
-        recipient_name="karan",
-        recipient_email="jadithya2004@gmail.com"
-    )
+    # APAC server-specific configuration
+    apac_config = {
+        "config": CredentialConfig(
+            template_id="fresh_apac_template",  # Will be replaced by newly created template
+            recipient_name="karan",
+            recipient_email="neerajsalehittal3235@gmail.com"
+        ),
+        "template_config": TemplateConfig(
+            template_id="fresh_apac_template",  # Will be replaced by newly created template
+            name="Test Template APAC",
+            description="Automated test template for APAC server",
+            institution_id="test_institution_id"
+        )
+    }
 
-    template_config = TemplateConfig(
-        template_id="26613",  # Template ID from your config
-        name="Test Template",
-        description="Automated test template",
-        institution_id="test_institution_id"  # Replace with actual institution ID
-    )
+    # Test only APAC server
+    server_key = "apac"
+    server_config = SERVERS[server_key]
 
-    # Test all servers
-    server_results = {}
-    all_servers_success = True
+    print(f"🌐 Testing APAC Server: {server_config['url']}")
+    print("=" * 60)
 
-    for server_key, server_config in SERVERS.items():
-        print(f"\n🌐 Testing Server: {server_key.upper()} ({server_config['url']})")
-        print("=" * 60)
+    try:
+        # Get server-specific configuration
+        manager = CredentialManager(email_manager, demo_mode=False, server_key=server_key)
+        success = manager.execute_full_workflow(
+            apac_config["config"],
+            apac_config["template_config"]
+        )
 
-        try:
-            manager = CredentialManager(email_manager, demo_mode=False, server_key=server_key)
-            success = manager.execute_full_workflow(config, template_config)
-            server_results[server_key] = success
+        if success:
+            print("✅ APAC server test completed successfully")
+        else:
+            print("❌ APAC server test failed")
 
-            if success:
-                print(f"✅ {server_key.upper()} server test completed successfully")
-            else:
-                print(f"❌ {server_key.upper()} server test failed")
-                all_servers_success = False
-
-        except Exception as e:
-            print(f"💥 Error testing {server_key.upper()} server: {str(e)}")
-            server_results[server_key] = False
-            all_servers_success = False
-
-    # Generate multi-server report
-    print(f"\n{'='*60}")
-    print("MULTI-SERVER TEST SUMMARY")
-    print(f"{'='*60}")
-
-    for server_key, success in server_results.items():
-        status = "✅ PASSED" if success else "❌ FAILED"
-        url = SERVERS[server_key]['url']
-        print(f"{server_key.upper()} Server ({url}): {status}")
-
-    overall_status = "✅ ALL SERVERS PASSED" if all_servers_success else "⚠️ SOME SERVERS FAILED"
-    print(f"\nOverall Status: {overall_status}")
-
-    # Send comprehensive multi-server report
-    send_multi_server_report(email_manager, server_results)
-
-    sys.exit(0 if all_servers_success else 1)
-
-
-def send_multi_server_report(email_manager: EmailManager, server_results: Dict[str, bool]):
-    """Send comprehensive multi-server test report"""
-    subject = "🌐 CertifyMe Multi-Server API Automation Report"
-
-    body = "CertifyMe Multi-Server API Automation Test Report\n"
-    body += "=" * 55 + "\n\n"
-
-    body += "Server Test Results:\n"
-    body += "-" * 25 + "\n"
-
-    for server_key, success in server_results.items():
-        server_config = SERVERS[server_key]
-        status = "✅ PASSED" if success else "❌ FAILED"
-        body += "08"
-        body += f"   URL: {server_config['url']}\n"
-        body += f"   Status: {status}\n\n"
-
-    total_servers = len(server_results)
-    passed_servers = sum(server_results.values())
-    success_rate = (passed_servers / total_servers) * 100
-
-    body += "Summary:\n"
-    body += "-" * 10 + "\n"
-    body += f"Total Servers Tested: {total_servers}\n"
-    body += f"Servers Passed: {passed_servers}\n"
-    body += f"Servers Failed: {total_servers - passed_servers}\n"
-    body += ".1f"
-    body += f"Execution Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-
-    overall_status = "✅ ALL SERVERS PASSED" if success_rate == 100 else f"⚠️ {total_servers - passed_servers} SERVER(S) FAILED"
-    body += f"Overall Status: {overall_status}\n"
-
-    email_manager.send_email(subject, body)
+    except Exception as e:
+        print(f"💥 Error testing APAC server: {str(e)}")
 
 
 if __name__ == "__main__":
