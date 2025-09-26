@@ -2,7 +2,7 @@ import requests
 import logging
 import sys
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import json
 import os
 from dataclasses import dataclass
@@ -54,7 +54,7 @@ class EmailConfig:
     smtp_port: int
     sender_email: str
     sender_password: str
-    recipient_email: str
+    recipient_emails: List[str]
 
 
 @dataclass
@@ -76,7 +76,7 @@ class EmailManager:
         """Send an email with given subject and body."""
         msg = MIMEMultipart()
         msg["From"] = self.config.sender_email
-        msg["To"] = self.config.recipient_email
+        msg["To"] = ", ".join(self.config.recipient_emails)
         msg["Subject"] = subject
 
         msg.attach(MIMEText(body, "plain"))
@@ -775,7 +775,7 @@ def main():
         smtp_port=587,
         sender_email="neerajsalehittal3235@gmail.com",
         sender_password="qvkm odse mvjt rlei",  # Use App Password if Gmail
-        recipient_email="jadithya2004@gmail.com"
+        recipient_emails=["jadithya2004@gmail.com", "harshit@certifyme.cc", "neerajsalehittal3235@gmail.com"]
     )
     email_manager = EmailManager(email_config)
 
